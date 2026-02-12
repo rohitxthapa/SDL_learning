@@ -23,6 +23,10 @@ typedef struct {
 
 typedef struct {
   SDL_FRect position;
+  short int redval;
+  short int greenval;
+  short int blueval;
+  short int trans;
 
 } Object;
 
@@ -54,7 +58,10 @@ int main(int argv, char *argc[]) {
       .framestarttick = SDL_GetTicks()};
   loadmedia(renderer, &player);
 
-  Object objs[10] = {{{400, 400, 100, 100}}, {{600, 600, 100, 100}}};
+  Object objs[10] = {
+      {{400, 400, 100, 100}, 0xff, 0x00, 0x00, 0xff},
+      {{600, 600, 100, 100}, 0x00, 0xff, 0x00, 0xff},
+  };
 
   int running = 1;
   SDL_Event event;
@@ -182,8 +189,9 @@ void update(Character *player, Object *objs, int size) {
         if (player->drect.y <= objs[i].position.y + objs[i].position.h) {
           if (player->drect.x + player->drectbreadth >= objs[i].position.x) {
             if (player->drect.x <= objs[i].position.x + objs[i].position.w) {
-              player->dx -= player->ax * 18;
-              player->dy -= player->ay * 18;
+
+              // player->dx -= player->ax * 18;
+              // player->dy -= player->ay * 18;
             }
           }
         }
@@ -192,19 +200,23 @@ void update(Character *player, Object *objs, int size) {
   }
   if (player->drect.x < 0) {
     player->drect.x = 0;
-    player->dx += 20;
+    player->dx = 0;
+    // player->dx += 20;
   }
   if (player->drect.y < 0) {
     player->drect.y = 0;
-    player->dy += 20;
+    player->dy = 0;
+    // player->dy += 20;
   }
   if ((player->drect.x + player->drectbreadth) > windowbreadth) {
     player->drect.x = windowbreadth - player->drectbreadth;
-    player->dx -= 20;
+    player->dx = 0;
+    // player->dx -= 20;
   }
   if ((player->drect.y + player->drectheight) > windowheight) {
     player->drect.y = windowheight - player->drectheight;
-    player->dy -= 20;
+    player->dx = 0;
+    // player->dy -= 20;
   }
 }
 
@@ -212,8 +224,10 @@ void render(SDL_Renderer *renderer, Character *player, Object *objs, int size) {
 
   SDL_SetRenderDrawColor(renderer, 0xff, 0x0f, 0xa0, 0xff);
   SDL_RenderClear(renderer);
-  SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
   for (int i = 0; i < size; i++) {
+
+    SDL_SetRenderDrawColor(renderer, objs[i].redval, objs[i].greenval,
+                           objs[i].blueval, objs[i].trans);
     SDL_RenderFillRect(renderer, &objs[i].position);
   }
   SDL_RenderTexture(renderer, player->texture, &player->srect, &player->drect);

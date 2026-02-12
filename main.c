@@ -1,9 +1,9 @@
-#include<stdio.h>
-#include<SDL3/SDL.h>
+#include <SDL3/SDL.h>
+#include <stdio.h>
 
-int main(){
+int main() {
 
-    printf("Tihs is main function \n ");
+  printf("Tihs is main function \n ");
 
-    return 0;
+  return 0;
 }
