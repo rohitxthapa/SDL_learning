@@ -9,9 +9,9 @@ typedef struct {
   double delta;
   int animationspeed;
   SDL_Texture *map;
+  float x, y, w, h;
   SDL_FRect swindow;
   SDL_FRect dwindow;
-
 } Gamestate;
 
 typedef struct {
@@ -51,7 +51,11 @@ int main(int argv, char *argc[]) {
       .windowheight = 800,
       .delta = 0.016,
       .animationspeed = 100,
-      .swindow = {300, 300, 400, 400},
+      .x = 300.0f,
+      .y = 300.0f,
+      .w = 400.0f,
+      .h = 400.0f,
+      .swindow = {state.x, state.y, state.w, state.h},
       .dwindow = {0, 0, .w = state.windowbreadth, .h = state.windowheight}};
   SDL_Window *window;
   SDL_Renderer *renderer;
@@ -76,8 +80,8 @@ int main(int argv, char *argc[]) {
   loadmedia(renderer, &player.texture, &state.map);
 
   Object objs[10] = {
-      {{200, 200, 100, 100}, 0xff, 0x00, 0x00, 0xff},
-      {{600, 600, 100, 100}, 0x00, 0xff, 0x00, 0xff},
+      {{400 - state.x, 400 - state.y, 100, 100}, 0xff, 0x00, 0x00, 0xff},
+      {{600 - state.x, 600 - state.y, 100, 100}, 0x00, 0xff, 0x00, 0xff},
   };
 
   int running = 1;
