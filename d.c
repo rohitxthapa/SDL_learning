@@ -26,11 +26,12 @@ typedef struct {
 
 typedef struct {
   SDL_FRect position;
-  short int redval;
-  short int greenval;
-  short int blueval;
-  short int trans;
-
+  struct {
+    short int redval;
+    short int greenval;
+    short int blueval;
+    short int trans;
+  } colour;
 } Object;
 
 void cleanup(const char *error, void *win, void *ren, void *tex) {
@@ -192,8 +193,9 @@ void render(SDL_Renderer *renderer, Character *player, Object *objs, int size,
   SDL_RenderTexture(renderer, state->map, &state->swindow, &state->dwindow);
   for (int i = 0; i < size; i++) {
 
-    SDL_SetRenderDrawColor(renderer, objs[i].redval, objs[i].greenval,
-                           objs[i].blueval, objs[i].trans);
+    SDL_SetRenderDrawColor(renderer, objs[i].colour.redval,
+                           objs[i].colour.greenval, objs[i].colour.blueval,
+                           objs[i].colour.trans);
     SDL_RenderFillRect(renderer, &objs[i].position);
   }
   SDL_RenderTexture(renderer, player->texture, &player->srect, &player->drect);
@@ -235,15 +237,9 @@ int main(int argv, char *argc[]) {
 
   Object objs[10] = {
       {{400 - state.swindow.x, 400 - state.swindow.y, 100, 100},
-       0xff,
-       0x00,
-       0x00,
-       0xff},
+       {0xff, 0x00, 0x00, 0xff}},
       {{600 - state.swindow.x, 800 - state.swindow.y, 100, 100},
-       0x00,
-       0xff,
-       0x00,
-       0xff},
+       {0x00, 0xff, 0x00, 0xff}},
   };
 
   int running = 1;
@@ -257,6 +253,14 @@ int main(int argv, char *argc[]) {
     start = end;
 
     while (SDL_PollEvent(&event)) {
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = 0;
+      case SDL_EVENT_WINDOW_RESIZED:
+        SDL_GetWindowSize(window, &state.windowbreadth, &state.windowheight);
+        state.dwindow.w = state.windowbreadth;
+        state.dwindow.h = state.windowheight;
+      }
       if (event.type == SDL_EVENT_QUIT) {
         running = 0;
       }
