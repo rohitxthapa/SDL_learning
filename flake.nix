@@ -23,6 +23,7 @@
           pkgs.gdb
           # pkgs.valgrind
           pkgs.bear
+          pkgs.sdl3
         ];
         nativeBuildInputs = [ pkgs.pkg-config ];
         env = {
