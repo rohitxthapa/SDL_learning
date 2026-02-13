@@ -34,18 +34,81 @@ typedef struct {
   } colour;
 } Object;
 
-void cleanup(const char *error, void *win, void *ren, void *tex) {
-  printf("%s", error);
-  if (tex) {
-    SDL_DestroyTexture(tex);
+void init(SDL_Window **window, SDL_Renderer **renderer, Gamestate *state);
+void loadmedia(SDL_Renderer *renderer, SDL_Texture **player, SDL_Texture **map);
+void handleinput(Character *player);
+void update(Character *player, Object *objs, int size, Gamestate *state);
+void render(SDL_Renderer *renderer, Character *player, Object *objs, int size,
+            Gamestate *state);
+void cleanup(const char *error, void *win, void *ren, void *tex);
+
+int main(int argv, char *argc[]) {
+
+  Gamestate state = {
+      .windowbreadth = 1000,
+      .windowheight = 800,
+      .delta = 0.016,
+      .animationspeed = 125,
+      .swindow = {300, 300, state.windowbreadth / 3, state.windowheight / 3},
+      .framestarttick = SDL_GetTicks(),
+      .dwindow = {0, 0, .w = state.windowbreadth, .h = state.windowheight}};
+  SDL_Window *window;
+  SDL_Renderer *renderer;
+  init(&window, &renderer, &state);
+
+  Character player = {.srect = {0, 0, 48, 48},
+                      .drect = {(state.windowbreadth >> 1) - 50,
+                                (state.windowheight >> 1) - 50, 100, 100},
+                      .dx = 0,
+                      .dy = 0,
+                      .ax = 0,
+                      .ay = 0,
+                      .framecount = 0,
+                      .playerspeed = 360.0f};
+  loadmedia(renderer, &player.texture, &state.map);
+
+  Object objs[10] = {
+      {{800 - state.swindow.x, 800 - state.swindow.y, 100, 100},
+       {0xff, 0x00, 0x00, 0xff}},
+      {{600 - state.swindow.x, 800 - state.swindow.y, 100, 100},
+       {0x00, 0xff, 0x00, 0xff}},
+  };
+
+  int running = 1;
+  SDL_Event event;
+
+  Uint64 start = SDL_GetPerformanceCounter(), end;
+  while (running) {
+
+    end = SDL_GetPerformanceCounter();
+    state.delta = (double)(end - start) / (double)SDL_GetPerformanceFrequency();
+    start = end;
+
+    while (SDL_PollEvent(&event)) {
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = 0;
+      case SDL_EVENT_WINDOW_RESIZED:
+        SDL_GetWindowSize(window, &state.windowbreadth, &state.windowheight);
+        state.swindow.w = state.windowbreadth / 3;
+        state.swindow.h = state.windowheight / 3;
+        state.dwindow.w = state.windowbreadth;
+        state.dwindow.h = state.windowheight;
+      }
+      if (event.type == SDL_EVENT_QUIT) {
+        running = 0;
+      }
+    }
+
+    handleinput(&player);
+    update(&player, objs, 2, &state);
+    render(renderer, &player, objs, 2, &state);
   }
-  if (ren) {
-    SDL_DestroyRenderer(ren);
-  }
-  if (win) {
-    SDL_DestroyWindow(win);
-  }
+
+  const char *message = "execution completed";
+  cleanup(message, window, renderer, &player.texture);
   SDL_Quit();
+  return 0;
 }
 
 void init(SDL_Window **window, SDL_Renderer **renderer, Gamestate *state) {
@@ -122,14 +185,17 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
   bool moving = (player->dx != 0 || player->dy != 0);
 
   if (moving) {
-    player->drect.x += player->dx * player->playerspeed * state->delta;
-    state->swindow.x += player->dx * player->playerspeed * state->delta;
-    player->drect.y += player->dy * player->playerspeed * state->delta;
-    state->swindow.y += player->dy * player->playerspeed * state->delta;
+    float xpixeltoadd, ypixeltoadd;
+    xpixeltoadd = player->dx * player->playerspeed * state->delta;
+    // player->drect.x += xpixeltoadd;
+    state->swindow.x += xpixeltoadd;
+    ypixeltoadd = player->dy * player->playerspeed * state->delta;
+    // player->drect.y += ypixeltoadd;
+    state->swindow.y += ypixeltoadd;
 
     for (int i = 0; i < size; i++) {
-      objs[i].position.x = 400 - state->swindow.x;
-      objs[i].position.y = 600 - state->swindow.y;
+      objs[i].position.x -= 3 * xpixeltoadd;
+      objs[i].position.y -= 3 * ypixeltoadd;
     }
 
     if (player->dx != 0) {
@@ -160,8 +226,8 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
           if (player->drect.x + player->drect.w >= objs[i].position.x) {
             if (player->drect.x <= objs[i].position.x + objs[i].position.w) {
 
-              player->dx -= player->ax * 18;
-              player->dy -= player->ay * 18;
+              player->dx -= player->ax * 8;
+              player->dy -= player->ay * 8;
             }
           }
         }
@@ -169,21 +235,17 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
     }
   }
 
-  if (player->drect.x < 0) {
-    player->drect.x = 0;
-    player->dx = 0;
+  if (state->swindow.x < 0) {
+    state->swindow.x = 0;
   }
-  if (player->drect.y < 0) {
-    player->drect.y = 0;
-    player->dy = 0;
+  if (state->swindow.y < 0) {
+    state->swindow.y = 0;
   }
-  if ((player->drect.x + player->drect.w) > state->windowbreadth) {
-    player->drect.x = state->windowbreadth - player->drect.w;
-    player->dx = 0;
+  if (state->swindow.x + state->swindow.w > 3200) {
+    state->swindow.x = 3200 - state->swindow.w;
   }
-  if ((player->drect.y + player->drect.h) > state->windowheight) {
-    player->drect.y = state->windowheight - player->drect.h;
-    player->dy = 0;
+  if (state->swindow.y + state->swindow.h > 1800) {
+    state->swindow.y = 1800 - state->swindow.h;
   }
 }
 
@@ -202,77 +264,16 @@ void render(SDL_Renderer *renderer, Character *player, Object *objs, int size,
   SDL_RenderPresent(renderer);
 }
 
-// void init(SDL_Window **window, SDL_Renderer **renderer, Gamestate *state);
-// void loadmedia(SDL_Renderer *renderer, SDL_Texture **player, SDL_Texture
-// **map); void handleinput(Character *player); void update(Character *player,
-// Object *objs, int size, Gamestate *state); void render(SDL_Renderer
-// *renderer, Character *player, Object *objs, int size,
-//             Gamestate *state);
-// void cleanup(const char *error, void *win, void *ren, void *tex);
-
-int main(int argv, char *argc[]) {
-
-  Gamestate state = {
-      .windowbreadth = 1000,
-      .windowheight = 800,
-      .delta = 0.016,
-      .animationspeed = 100,
-      .swindow = {300, 300, 400, 400},
-      .framestarttick = SDL_GetTicks(),
-      .dwindow = {0, 0, .w = state.windowbreadth, .h = state.windowheight}};
-  SDL_Window *window;
-  SDL_Renderer *renderer;
-  init(&window, &renderer, &state);
-
-  Character player = {.srect = {0, 0, 48, 48},
-                      .drect = {(state.windowbreadth >> 1) - 50,
-                                (state.windowheight >> 1) - 50, 100, 100},
-                      .dx = 0,
-                      .dy = 0,
-                      .ax = 0,
-                      .ay = 0,
-                      .framecount = 0,
-                      .playerspeed = 120.0f};
-  loadmedia(renderer, &player.texture, &state.map);
-
-  Object objs[10] = {
-      {{400 - state.swindow.x, 400 - state.swindow.y, 100, 100},
-       {0xff, 0x00, 0x00, 0xff}},
-      {{600 - state.swindow.x, 800 - state.swindow.y, 100, 100},
-       {0x00, 0xff, 0x00, 0xff}},
-  };
-
-  int running = 1;
-  SDL_Event event;
-
-  Uint64 start = SDL_GetPerformanceCounter(), end;
-  while (running) {
-
-    end = SDL_GetPerformanceCounter();
-    state.delta = (double)(end - start) / (double)SDL_GetPerformanceFrequency();
-    start = end;
-
-    while (SDL_PollEvent(&event)) {
-      switch (event.type) {
-      case SDL_EVENT_QUIT:
-        running = 0;
-      case SDL_EVENT_WINDOW_RESIZED:
-        SDL_GetWindowSize(window, &state.windowbreadth, &state.windowheight);
-        state.dwindow.w = state.windowbreadth;
-        state.dwindow.h = state.windowheight;
-      }
-      if (event.type == SDL_EVENT_QUIT) {
-        running = 0;
-      }
-    }
-
-    handleinput(&player);
-    update(&player, objs, 2, &state);
-    render(renderer, &player, objs, 2, &state);
+void cleanup(const char *error, void *win, void *ren, void *tex) {
+  printf("%s", error);
+  if (tex) {
+    SDL_DestroyTexture(tex);
   }
-
-  const char *message = "execution completed";
-  cleanup(message, window, renderer, &player.texture);
+  if (ren) {
+    SDL_DestroyRenderer(ren);
+  }
+  if (win) {
+    SDL_DestroyWindow(win);
+  }
   SDL_Quit();
-  return 0;
 }
