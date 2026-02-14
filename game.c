@@ -23,6 +23,7 @@ typedef struct {
   int ax, ay;
   int framecount;
   float playerspeed;
+  SDL_FlipMode flip;
   enum animationstate {
     IDLE = 0,
     STARTINGTOFLY = 1,
@@ -71,6 +72,7 @@ int main(int argv, char *argc[]) {
                       .dy = 0,
                       .ax = 0,
                       .ay = 0,
+                      .flip = SDL_FLIP_NONE,
                       .framecount = 0,
                       .playerspeed = 360.0f,
                       .state = IDLE};
@@ -193,7 +195,7 @@ void handleinput(Character *player) {
 void update(Character *player, Object *objs, int size, Gamestate *state) {
   bool moving = (player->dx != 0 || player->dy != 0);
 
-  if (moving) {
+  if (moving && player->state == FLYING) {
     float xpixeltoadd, ypixeltoadd;
     xpixeltoadd = player->dx * player->playerspeed * state->delta;
     // player->drect.x += xpixeltoadd;
@@ -206,13 +208,6 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
       objs[i].position.x -= 3 * xpixeltoadd;
       objs[i].position.y -= 3 * ypixeltoadd;
     }
-
-    if (player->dx != 0) {
-      player->dx += (player->dx < 0) ? 1 : -1;
-    }
-    if (player->dy != 0) {
-      player->dy += (player->dy < 0) ? 1 : -1;
-    }
   }
 
   state->frameendtick = SDL_GetTicks();
@@ -224,12 +219,12 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
         player->state = STARTINGTOFLY;
       } else if (player->state == STARTINGTOFLY && player->framecount == 7) {
         player->state = FLYING;
-        player->drect.y -= 20;
       }
+
     } else {
       if (player->state == FLYING) {
         player->state = STOPPINGFROMFLY;
-        player->drect.y += 20;
+        player->framecount = 0;
       } else if (player->state != IDLE && player->framecount == 7) {
         player->state = IDLE;
       }
@@ -257,6 +252,18 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
     }
   }
 
+  if (player->dx != 0) {
+    if (player->dx < 0) {
+      player->flip = SDL_FLIP_HORIZONTAL;
+    } else {
+      player->flip = SDL_FLIP_NONE;
+    }
+    player->dx += (player->dx < 0) ? 1 : -1;
+  }
+  if (player->dy != 0) {
+    player->dy += (player->dy < 0) ? 1 : -1;
+  }
+
   if (state->swindow.x < 0) {
     state->swindow.x = 0;
   }
@@ -282,8 +289,10 @@ void render(SDL_Renderer *renderer, Character *player, Object *objs, int size,
                            objs[i].colour.trans);
     SDL_RenderFillRect(renderer, &objs[i].position);
   }
-  SDL_RenderTexture(renderer, player->texture, &player->srect, &player->drect);
-
+  SDL_RenderTextureRotated(renderer, player->texture, &player->srect,
+                           &player->drect, 0, NULL, player->flip);
+  // SDL_RenderTexture(renderer, player->texture,
+  // &player->srect,&player->drect);
   SDL_RenderPresent(renderer);
 }
 
