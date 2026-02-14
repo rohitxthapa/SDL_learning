@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3_image/SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -22,6 +23,12 @@ typedef struct {
   int ax, ay;
   int framecount;
   float playerspeed;
+  enum animationstate {
+    IDLE = 0,
+    STARTINGTOFLY = 1,
+    FLYING = 2,
+    STOPPINGFROMFLY = 3
+  } state;
 } Character;
 
 typedef struct {
@@ -56,15 +63,17 @@ int main(int argv, char *argc[]) {
   SDL_Renderer *renderer;
   init(&window, &renderer, &state);
 
-  Character player = {.srect = {0, 0, 48, 48},
-                      .drect = {(state.windowbreadth >> 1) - 50,
-                                (state.windowheight >> 1) - 50, 100, 100},
+  Character player = {.srect = {0, 32, 32, 32},
+                      .drect = {(state.windowbreadth >> 1) - player.srect.w / 2,
+                                (state.windowheight >> 1) - player.srect.h / 2,
+                                64, 64},
                       .dx = 0,
                       .dy = 0,
                       .ax = 0,
                       .ay = 0,
                       .framecount = 0,
-                      .playerspeed = 360.0f};
+                      .playerspeed = 360.0f,
+                      .state = IDLE};
   loadmedia(renderer, &player.texture, &state.map);
 
   Object objs[10] = {
@@ -140,7 +149,7 @@ void init(SDL_Window **window, SDL_Renderer **renderer, Gamestate *state) {
 
 void loadmedia(SDL_Renderer *renderer, SDL_Texture **player,
                SDL_Texture **map) {
-  SDL_Surface *surface = SDL_LoadBMP("firsttry.bmp");
+  SDL_Surface *surface = IMG_Load("playersprite.png");
   if (surface == NULL) {
     const char *err = SDL_GetError();
     cleanup(err, NULL, renderer, NULL);
@@ -148,7 +157,7 @@ void loadmedia(SDL_Renderer *renderer, SDL_Texture **player,
     exit(1);
   }
   *player = SDL_CreateTextureFromSurface(renderer, surface);
-  surface = SDL_LoadBMP("greenscreen.bmp");
+  surface = IMG_Load("greenscreen.png");
   *map = SDL_CreateTextureFromSurface(renderer, surface);
   SDL_DestroySurface(surface);
   if (*player == NULL || *map == NULL) {
@@ -210,12 +219,25 @@ void update(Character *player, Object *objs, int size, Gamestate *state) {
   if (((state->frameendtick - state->framestarttick) / state->animationspeed) !=
       0) {
     if (moving) {
-      player->framecount = (player->framecount + 1) % 4;
-      player->srect.x = player->framecount * 96;
+      if (player->state == IDLE) {
+        player->framecount = 0;
+        player->state = STARTINGTOFLY;
+      } else if (player->state == STARTINGTOFLY && player->framecount == 7) {
+        player->state = FLYING;
+        player->drect.y -= 20;
+      }
     } else {
-      player->framecount = 0;
-      player->srect.x = 0;
+      if (player->state == FLYING) {
+        player->state = STOPPINGFROMFLY;
+        player->drect.y += 20;
+      } else if (player->state != IDLE && player->framecount == 7) {
+        player->state = IDLE;
+      }
     }
+    player->srect.x = (player->framecount) * 32;
+    player->srect.y = player->state * 32;
+
+    player->framecount = (player->framecount + 1) % 8;
     state->framestarttick = state->frameendtick;
   }
 
@@ -261,6 +283,7 @@ void render(SDL_Renderer *renderer, Character *player, Object *objs, int size,
     SDL_RenderFillRect(renderer, &objs[i].position);
   }
   SDL_RenderTexture(renderer, player->texture, &player->srect, &player->drect);
+
   SDL_RenderPresent(renderer);
 }
 

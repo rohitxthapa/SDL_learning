@@ -1,0 +1,10 @@
+-I.
+-I/usr/local/include
+-I/usr/local/include/SDL3
+-I/usr/local/include/SDL3_image
+-I/usr/local/include/SDL3_mixer
+-I/usr/local/include/SDL3_ttf
+-I/usr/local/include/SDL3_net
+-I/usr/include
+-std=c11
+-Wall
