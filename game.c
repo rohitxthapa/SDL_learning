@@ -67,7 +67,7 @@ int main(int argv, char *argc[]) {
   Character player = {.srect = {0, 32, 32, 32},
                       .drect = {(state.windowbreadth >> 1) - player.srect.w / 2,
                                 (state.windowheight >> 1) - player.srect.h / 2,
-                                64, 64},
+                                72, 72},
                       .dx = 0,
                       .dy = 0,
                       .ax = 0,
