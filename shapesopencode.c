@@ -14,7 +14,7 @@ typedef struct {
   float size;
   float degree;
   float degreeradian;
-  float degreeradiantoxaxis;
+  float degreetoxaxis;
 } Blocks;
 
 bool init(SDL_Window **window, SDL_Renderer **renderer) {
@@ -42,36 +42,41 @@ bool init(SDL_Window **window, SDL_Renderer **renderer) {
 }
 
 void getblocksdimentions(Blocks *block) {
+  block->sides = 3 + rand() % 5;
+  block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides + 1));
 
-  block->x = 900;
-  block->y = 500;
-  block->sides = 3 + rand() % 50;
-  block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides));
+  block->x = 200;
+  block->y = 200;
   block->degree = (block->sides - 2) * 180.0 / block->sides;
   block->degreeradian = block->degree * (3.141592653589) / 180;
   block->size = 50 + rand() % 50;
-  block->degreeradiantoxaxis = (rand() % 360) * (3.141592653589) / 180;
+  block->degreetoxaxis = rand() % 360;
 
   return;
 }
 
 void updateblocks(Blocks *block) {
-  // suggested by opencode agent
+  float angle = block->degreetoxaxis * (3.141592653589) / 180.0f;
+  float cx = block->x;
+  float cy = block->y;
+
   for (int i = 0; i < block->sides; i++) {
-    float theta =
-        block->degreeradiantoxaxis + (2.0f * 3.141592653589 * i) / block->sides;
-    block->vertices[i].position.x = block->x + block->size * cos(theta);
-    block->vertices[i].position.y = block->y - block->size * sin(theta);
+    float theta = angle + (2.0f * 3.141592653589f * i) / block->sides;
+    block->vertices[i].position.x = cx + block->size * cos(theta);
+    block->vertices[i].position.y = cy - block->size * sin(theta);
   }
 
-  for (int i = 0; i < block->sides; i++)
+  block->vertices[block->sides].position.x = block->vertices[0].position.x;
+  block->vertices[block->sides].position.y = block->vertices[0].position.y;
+
+  for (int i = 0; i <= block->sides; i++)
     block->vertices[i].color = (SDL_FColor){1, 0, 0, 1};
   return;
 }
 
 void renderblocks(Blocks *block, SDL_Renderer *renderer) {
-  int triangles = block->sides - 2;
-  int incides[triangles * 3];
+  int triangles = block->sides - 1;
+  int *incides = malloc(sizeof(int) * triangles * 3);
   int n = 0;
   for (int i = 0; i < triangles; i++) {
 
@@ -80,8 +85,9 @@ void renderblocks(Blocks *block, SDL_Renderer *renderer) {
     }
     n++;
   }
-  SDL_RenderGeometry(renderer, NULL, block->vertices, block->sides, incides,
+  SDL_RenderGeometry(renderer, NULL, block->vertices, block->sides + 1, incides,
                      triangles * 3);
+  free(incides);
 }
 
 int main() {
@@ -96,7 +102,7 @@ int main() {
   bool running = true;
   while (running) {
 
-    srand(12345);
+    srand(1345);
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_EVENT_QUIT) {
         running = false;
@@ -113,6 +119,7 @@ int main() {
     SDL_RenderPresent(renderer);
   }
 
+  free(block.vertices);
   SDL_DestroyWindow(window);
   SDL_DestroyRenderer(renderer);
   SDL_Quit();
