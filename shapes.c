@@ -45,7 +45,7 @@ void getblocksdimentions(Blocks *block) {
 
   block->x = 900;
   block->y = 500;
-  block->sides = 3 + rand() % 50;
+  block->sides = 3 + rand() % 15;
   block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides));
   block->degree = (block->sides - 2) * 180.0 / block->sides;
   block->degreeradian = block->degree * (3.141592653589) / 180;
@@ -68,6 +68,37 @@ void updateblocks(Blocks *block) {
     block->vertices[i].color = (SDL_FColor){1, 0, 0, 1};
   return;
 }
+
+// void updateblocks(Blocks *block) {
+//   double tempx, tempy;
+//   double ix, iy, fx, fy;
+
+//   ix = block->x;
+//   fx = ix + (block->size * cos(block->degreeradiantoxaxis));
+//   iy = block->y;
+//   fy = iy - (block->size * sin(block->degreeradiantoxaxis));
+
+//   block->vertices[0].position = (SDL_FPoint){ix, iy};
+//   block->vertices[1].position = (SDL_FPoint){fx, fy};
+//   // suggested by opencode agent
+//   for (int i = 2; i < block->sides; i++) {
+
+//     tempx = fx + (ix - fx) * cos(block->degreeradian) -
+//             (iy - fy) * sin(block->degreeradian);
+//     tempy = fy + (ix - fx) * sin(block->degreeradian) +
+//             (iy - fy) * cos(block->degreeradian);
+//     block->vertices[i].position.x = tempx;
+//     block->vertices[i].position.y = tempy;
+//     ix = fx;
+//     iy = fy;
+//     fx = tempx;
+//     fy = tempy;
+//   }
+
+//   for (int i = 0; i < block->sides - 1; i++)
+//     block->vertices[i].color = (SDL_FColor){1, 0, 0, 1};
+//   return;
+// }
 
 void renderblocks(Blocks *block, SDL_Renderer *renderer) {
   int triangles = block->sides - 2;
@@ -94,9 +125,9 @@ int main() {
 
   SDL_Event event;
   bool running = true;
+  srand(12345);
   while (running) {
-
-    srand(12345);
+    SDL_RenderClear(renderer);
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_EVENT_QUIT) {
         running = false;
@@ -109,8 +140,9 @@ int main() {
     updateblocks(&block);
 
     renderblocks((&block), renderer);
-
+    free(block.vertices);
     SDL_RenderPresent(renderer);
+    SDL_Delay(1000);
   }
 
   SDL_DestroyWindow(window);
