@@ -128,23 +128,23 @@ int main() {
   srand(12345);
   while (running) {
     SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xff, 0xff);
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_EVENT_QUIT) {
         running = false;
       }
     }
-    SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xff, 0xff);
 
     getblocksdimentions(&block);
 
     updateblocks(&block);
 
     renderblocks((&block), renderer);
-    free(block.vertices);
     SDL_RenderPresent(renderer);
-    SDL_Delay(1000);
+    SDL_Delay(100);
   }
 
+  free(block.vertices);
   SDL_DestroyWindow(window);
   SDL_DestroyRenderer(renderer);
   SDL_Quit();
