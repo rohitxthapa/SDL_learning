@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <SDL3/SDL.h>
+#include <stdlib.h>
 
 
 typedef struct {
@@ -14,9 +15,10 @@ typedef struct {
   float degreeradiantoxaxis;
   SDL_Texture *texture;
 } polygons;
-void get_polygons(polygons *block, float x , float y);
+void get_polygons(polygons *block, int x , int y);
 
 void get_polygons_texture(polygons *block, SDL_Renderer* renderer);
 
+void free_polygon(polygons *block);
 
 #endif

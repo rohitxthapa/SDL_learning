@@ -98,3 +98,68 @@ int main() {
   SDL_Quit();
   return 0;
 }
+
+// void generatepolygons(gridpos* chunk){
+
+// }
+
+// int chunkmod(chunks *chunks, int x, int y) {
+//   return (x + y + chunks->sideoftotalchunks / 2) % chunks->sideoftotalchunks;
+// }
+// void checkthechunks(chunks *chunks) {
+//   int centerx, centery;
+//   centerx = chunkmod(chunks, chunks->startx, 0);
+//   centery = chunkmod(chunks, chunks->starty, 0);
+
+//   for (int i = 1; i < chunks->sideoftotalchunks / 2; i++) {
+//     if (!chunks
+//              ->chunkspos[chunkmod(chunks, chunks->startx, i)]
+//                         [chunks, chunks->starty, i]
+//              .present) {
+//       generatepolygons(&chunks->chunkspos[chunkmod(chunks, chunks->startx,
+//       i)]
+//                  [chunkmod(chunks, chunks->starty, i)]);
+//     }
+//   }
+//   for (int i = -1; i < -(chunks->sideoftotalchunks / 2); i--) {
+//     if (!chunks
+//              ->chunkspos[chunkmod(chunks, chunks->startx, i)]
+//                         [chunkmod(chunks, chunks->starty, i)]
+//              .present) {
+//       generatepolygons(&chunks->chunkspos[chunkmod(chunks, chunks->startx,
+//       i)]
+//                  [chunkmod(chunks, chunks->starty, i)],);
+//     }
+//   }
+// }
+//
+//
+// void checkthechunks(chunks *chunks) {
+//   int x, y, centerx, centery, len;
+//   x = chunks->startx;
+//   y = chunks->starty;
+//   len = chunks->len_chunk;
+//   centerx = (x + len / 2) % len;
+//   centery = (y + len / 2) % len;
+
+//   for (int i = 1; i < chunks->len_chunk / 2; i++) {
+//     int xc = (x + len / 2 + i) % len;
+//     int yc = (y + len / 2 + i) % len;
+//     int xf = (xc - len) % len;
+//     int yf = (yc - len) % len;
+//     if (!chunks->chunkspos[xc][yf].present) {
+//       if ()
+//     }
+//   }
+//   for (int i = -1; i < -(chunks->len_chunk / 2); i--) {
+//     if (!chunks
+//              ->chunkspos[chunkmod(chunks, chunks->startx, i)]
+//                         [chunkmod(chunks, chunks->starty, i)]
+//              .present) {
+//       generatepolygons(&chunks->chunkspos[chunkmod(chunks, chunks->startx,
+//       i)]
+//                                          [chunkmod(chunks, chunks->starty,
+//                                          i)]);
+//     }
+//   }
+// }
