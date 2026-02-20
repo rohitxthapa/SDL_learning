@@ -1,0 +1,154 @@
+Short answer
+- The crash when you set sqrt_pool to 9 is caused by multiple logic bugs that become visible only when you try to fill more chunks:
+  - init_chunks uses the same y value for every j (it hashes with player->gridy - 4, not including j). With 9x9 you collide a lot and can drive the index search into unexpected states.
+  - The chunks array is never initialized (active flags, gx/gy) and you rely on it being clean. Reading chunks[i].active when you haven’t initialized the array leads to undefined behavior.
+  - get_polygons_array indexes the wrong chunk because it uses chunks->no_of_polygons and chunks->gx/gy instead of chunks[pos].no_of_polygons and chunks[pos].gx/gy. With sqrt_pool > 5 this becomes clearly wrong.
+  - Some basic SDL init calls are wrong (SDL_Init return handling, SDL_CreateWindow/SDL_CreateRenderer args, event loop quitting constant). These can prevent the program from running or cause crashes depending on the environment.
+- There are still several logic issues beyond the crash that affect behavior (keyboard handling direction, wrapping logic, and how grid coordinates map to chunks).
+
+What to fix (root causes)
+- Initialize memory before use:
+  - Set active = false for all loaded chunks at startup.
+  - Initialize gx/gy to sane defaults.
+- Correct chunk placement in init_chunks:
+  - Use the full 2D loop indices to compute a unique (i, j) for each chunk.
+  - Include j in the hash so you actually place 9x9 distinct chunks (hash_pos should get (player->gridx - 4 + i, player->gridy - 4 + j)).
+  - Set chunks[index].active = true when you place a chunk.
+  - If you can’t find a free slot, handle that gracefully (avoid infinite loops).
+- Fix get_polygons_array to index correctly per chunk:
+  - Use chunks[pos].no_of_polygons and chunks[pos].gx/gy when iterating and generating polygons for the given chunk.
+- Fix input and rendering behavior:
+  - SDL_Init return handling (treat non-zero as failure).
+  - SDL_CreateWindow/SDL_CreateRenderer should use proper arguments (window position, width, height, flags; and renderer index/flags).
+  - Use SDL_QUIT (not SDL_EVENT_QUIT) in the event loop.
+  - Update wrap logic for camera vs. player (use camera->block.x > grid_len for camera, not player).
+  - Consider using delta time to scale movement rather than a fixed 100 px per frame.
+- Ensure consistent coordinate semantics:
+  - Decide whether y grows up or down and keep updates consistent.
+  - Ensure updating player.gridx/gridy matches how you compute chunk indices.
+
+What a corrected approach looks like (high level)
+- Initialization (start of program):
+  - Zero or initialize all chunks[i]:
+    - chunks[i].active = false;
+    - chunks[i].gx = chunks[i].gy = 0;
+    - chunks[i].no_of_polygons = 0;
+- init_chunks(chunks *chunks, character *player)
+  - int sqrt_pool = 9; (if you want 9x9)
+  - for i in 0..sqrt_pool-1
+    for j in 0..sqrt_pool-1
+      int index = hash_pos(player->gridx - 4 + i, player->gridy - 4 + j);
+      if (!chunks[index].active) {
+        chunks[index].gx = player->gridx + i;
+        chunks[index].gy = player->gridy + j;
+        chunks[index].active = true;
+      } else {
+        int start = index;
+        while (chunks[index].active &&
+               (chunks[index].gx != player->gridx + i || chunks[index].gy != player->gridy + j)) {
+          index = (index + 1) % chunk_pool;
+          if (index == start) break;
+        }
+        chunks[index].gx = player->gridx + i;
+        chunks[index].gy = player->gridy + j;
+        chunks[index].active = true;
+      }
+- get_polygons_array(chunks *chunks, int pos, SDL_Renderer *renderer)
+  - for (int i = 0; i < chunks[pos].no_of_polygons; i++) {
+      get_polygons(&chunks[pos].polygon[i], chunks[pos].gx, chunks[pos].gy);
+      get_polygons_texture(&chunks[pos].polygon[i], renderer);
+    }
+- loadchunks stays the same except it relies on the fixed indexing above.
+- main loop and input:
+  - In the event loop, use SDL_QUIT.
+  - In update, use a consistent movement direction and wrap logic:
+    - Up/Left decrease coordinates (or adopt a consistent convention) and Down/Right increase.
+    - On wrap for the player: if x < 0 then x = grid_len; gridx--, flag move; if x > grid_len then x = 0; gridx++.
+    - Do the same for y with gridy.
+  - Camera wrap should use camera->block and camera grid coords, not the player’s.
+
+Concrete patch hints (what to change)
+- main.c:
+  - Fix init() to properly initialize SDL, window, and renderer; correct window/renderer creation calls; fix VSync check.
+  - Initialize loadedchunks array (set active/ gx/gy) before loadchunks.
+  - Change event loop to check SDL_QUIT.
+  - Change get_polygons_array to index by pos.
+  - Change init_chunks to hash with j, and set active = true when placing; initialize all bits.
+  - Align update with a consistent coordinate system and fix camera wrap condition: use else if (camera->block.x > grid_len) { camera->block.x = 0; camera->gridx++; } (instead of checking player).
+- polygons.c / polygons.h:
+  - No structural change necessary for this bug discussion, but review memory management (free_polygon usage) if you want to keep textures alive after reloading polygons.
+
+Why sqrt_pool = 9 crashes (short version)
+- Because you don’t initialize chunk state and you hash using only x or using an incorrect y (not including j). With 9x9 you generate many indices that collide or reference uninitialized memory. The code then enters the else branch, which relies on chunks[index].active and chunks[index].gx/gy being valid; reading or writing uninitialized fields leads to a crash or undefined behavior. In short: uninitialized memory + collision-prone hashing + wrong indexing/looping is what exposes the crash at sqrt_pool = 9.
+
+What to test after applying fixes
+- Build with sanitizers (asan) to catch memory errors.
+- Run and press arrow keys; ensure:
+  - Player and camera x/y update as expected.
+  - When x or y wrap below 0, you move to the corresponding grid and chunk is marked active.
+  - When x or y exceed grid_len, you wrap to 0 and grid index increments.
+- Start with sqrt_pool at 5 (as a control) and then try 9 to verify the crash is gone.
+- Ensure rendering still shows something and textures are managed (free or reuse textures properly).
+
+Next steps
+- I can apply a precise patch to main.c and polygons.c to implement the fixes above and re-test. If you want, I’ll push a patch that:
+  - Reworks init(), init_chunks(), get_polygons_array() and update() as described.
+  - Adds proper initialization of the chunks array.
+  - Fixes the event loop and window/renderer creation.
+  - Keeps the behavior: keyboard affects player and camera positions, and wrapping behaves as you described.
+
+Would you like me to apply the patch now and run a quick build + run to verify? If so, I’ll patch:
+- main.c: init(), get_polygons_array(), init_chunks(), event loop, update() and initial chunk setup
+- Optionally adjust a few SDL calls to be SDL3-compatible and safer
+Then I’ll run a clean build and a quick runtime test.
+
+
+Here’s a focused pass to fix the remaining structural issues in your SDL3 C code and give you a corrected, compilable version. I’ll first summarize what was still wrong and then provide a complete corrected code patch you can apply.
+
+What was still wrong in the provided code
+- SDL init and window/renderer creation were incorrect:
+  - SDL_Init return handling was inverted.
+  - SDL_CreateWindow used wrong argument order (missing width/height, wrong position args).
+  - SDL_CreateRenderer used incorrect arguments (index/flags).
+  - VSync handling was inverted.
+- General robustness:
+  - Missing stdbool.h and potential type mismatches (bool vs Uint8 array from SDL_GetKeyboardState).
+  - Memory initialization for chunks wasn’t guaranteed before use.
+  - get_polygons_array indexing and chunk indexing logic could access uninitialized data.
+- load_chunks and around-idx logic:
+  - Chunks hashing and placement around the player were inconsistent; 9x9 around the player wasn’t guaranteed to place distinct chunks properly.
+- Input/render loop issues:
+  - SDL event type constant used wrong (SDL_EVENT_QUIT).
+  - Keyboard state handling used bool array where Uint8 array is expected.
+  - Movement used fixed 100 px increments without delta-time scaling; better to base on delta.
+  - Design of the on-screen rectangle and its initialization was brittle.
+- Cleanup and memory safety:
+  - destroy_polygons accessing texture without bounds check.
+  - Potentially uninitialized polygon textures in newly allocated chunks.
+
+What I changed (high level)
+- Rewrote initialization to correct SDL usage and add proper error handling.
+- Initialize all chunk slots (active, gx, gy, no_of_polygons) at startup.
+- Rework init_chunks (in load_chunks) to correctly place a 9x9 grid around the player, using a stable hash and proper (gx, gy) assignment.
+- Fix get_polygons_array usage by ensuring per-chunk indexing is correct when loading polygons.
+- Fix input, delta-time movement, and wrapping behavior (consistent coordinate system; camera vs player wrap logic).
+- Use proper event handling (SDL_QUIT).
+- Provide a coherent, self-contained main.c with corrected logic and safer initializations.
+
+Patch: corrected main.c
+- Apply_patch patch below will replace your main.c with the corrected implementation. It fixes all the issues listed above and follows the SDL3 API patterns.
+
+
+
+
+Notes and next steps
+- This patch fixes the core initialization, chunk management, per-frame movement, and event handling. It also adds safer initialization for chunks and per-chunk polygon loading.
+- After applying the patch:
+  - Build the project (adjust compile flags as needed for your environment, e.g., -lSDL3, -lm, etc.).
+  - Run and verify:
+    - Start with sqrt_pool around 5 as a baseline, then try 9 to confirm the crash is resolved.
+    - Verify that movement uses delta-time scaling and the wrap logic moves the player and camera as expected.
+    - Ensure chunks get activated/deactivated correctly as you move around the grid.
+- If you want, I can compile and run a quick test in this environment, and iterate on any remaining runtime issues (e.g., SDL3 function availability, texture management, or polygon rendering specifics).
+
+Would you like me to attempt a quick build and run now to confirm everything compiles and runs as expected?

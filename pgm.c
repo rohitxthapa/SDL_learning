@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,6 +15,7 @@ typedef struct {
   int gridx;
   int gridy;
   bool player_move_grid;
+  float speed;
 } character;
 
 typedef struct {
@@ -58,41 +60,73 @@ bool init(SDL_Window **window, SDL_Renderer **renderer) {
   }
   return true;
 }
-int hash_pos(int x, int y) {
-  int num = (x * 7907) ^ (y * 7919);
-  return num % chunk_pool;
+void destroy_polygons(polygons *polygons, int size) {
+  for (int i = 0; i < size; i++) {
+    if (polygons[i].texture) {
+      SDL_DestroyTexture(polygons->texture);
+      polygons[i].texture = NULL;
+    }
+  }
 }
-void init_chunks(chunks *chunks, character *player) {
-  int sqrt_pool = 9;
+int hash_pos(int x, int y) {
+  long long num = ((long long)x * 73856093LL) ^ ((long long)y * 19349669LL);
+  int mod = (int)(num % chunk_pool);
+  if (mod < 0) {
+    mod += chunk_pool;
+  }
+  return mod;
+}
+void load_chunks(chunks *chunks, character *player) {
+  for (int i = 0; i < chunk_pool; i++) {
+    if (chunks[i].active) {
+      if (abs(chunks[i].gx - player->gridx) > 2 ||
+          abs(chunks[i].gy - player->gridy > 2)) {
+        chunks[i].active = false;
+        destroy_polygons(chunks[i].polygon, chunks[i].no_of_polygons);
+        chunks[i].no_of_polygons = 0;
+      }
+    }
+  }
+  int sqrt_pool = 7;
   for (int i = 0; i < sqrt_pool; i++) {
     for (int j = 0; j < sqrt_pool; j++) {
-      int index = hash_pos(player->gridx - 4 + i, player->gridy - 4);
+      int gx = player->gridx - 3 + i;
+      int gy = player->gridy - 3 + j;
+      int index = hash_pos(gx, gy);
       if (!chunks[index].active) {
-        chunks[index].gx = player->gridx + i;
-        chunks[index].gy = player->gridy + j;
+        chunks[index].gx = gx;
+        chunks[index].gy = gy;
+        chunks[index].active = true;
       } else {
-        while (chunks[index].active ||
+        int start = index;
+        while (chunks[index].active &&
                ((chunks[index].gx != player->gridx + i) ||
                 (chunks[index].gy != player->gridy + j))) {
           index++;
           index %= chunk_pool;
+          if (index == start) {
+            SDL_Log("i borke here");
+            SDL_Log("%d %d %d ", index, player->gridx, player->gridy);
+            break;
+          }
         }
         chunks[index].gx = player->gridx + i;
         chunks[index].gy = player->gridy + j;
+        chunks[index].active = true;
       }
     }
   }
 }
-void get_polygons_array(chunks *chunks, int pos, SDL_Renderer *renderer) {
-  for (int i = 0; i < chunks->no_of_polygons; i++) {
-    get_polygons(&chunks->polygon[i], chunks->gx, chunks->gy);
-    get_polygons_texture(&chunks->polygon[i], renderer);
-  }
-}
-void loadchunks(chunks *chunks, character *player, SDL_Renderer *renderer) {
+
+void load_polygons(chunks *chunks, character *player, SDL_Renderer *renderer) {
   for (int i = 0; i < chunk_pool; i++) {
-    chunks[i].no_of_polygons = 5;
-    get_polygons_array(chunks, i, renderer);
+    if (chunks->active && chunks->polygon[0].texture == NULL) {
+      chunks[i].no_of_polygons = 5;
+      for (int i = 0; i < chunks->no_of_polygons; i++) {
+        get_polygons(&chunks->polygon[i], chunks->gx, chunks->gy);
+        get_polygons_texture(&chunks->polygon[i], renderer);
+      }
+    }
   }
 }
 
@@ -100,24 +134,22 @@ void update(character *player, viewpoint *camera) {
 
   const bool *keys = SDL_GetKeyboardState(NULL);
   if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) {
-    player->block.y += 100;
-    camera->block.y += 100;
+    player->block.y += player->speed * delta;
+    camera->block.y += player->speed * delta;
   }
   if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) {
-    player->block.y += -100;
-    camera->block.y += -100;
+    player->block.y -= player->speed * delta;
+    camera->block.y -= player->speed * delta;
   }
   if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) {
-    player->block.x += 100;
-    camera->block.x += 100;
+    player->block.x += player->speed * delta;
+    camera->block.x += player->speed * delta;
   }
   if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) {
-    player->block.x += -100;
-    camera->block.x += -100;
+    player->block.x -= player->speed * delta;
+    camera->block.x -= player->speed * delta;
   }
   if (player->block.x < 0) {
-    // mere we might need to decrease grid_len by one but i cant wrap my head
-    // around it rn so next time
     player->block.x = grid_len;
     player->gridx--;
     player->player_move_grid = true;
@@ -135,11 +167,9 @@ void update(character *player, viewpoint *camera) {
   }
 
   if (camera->block.x < 0) {
-    // mere we might need to decrease grid_len by one but i cant wrap my head
-    // around it rn so next time
     camera->block.x = grid_len;
     camera->gridx--;
-  } else if (player->block.x > grid_len) {
+  } else if (camera->block.x > grid_len) {
     camera->block.x = 0;
     camera->gridx++;
   }
@@ -174,34 +204,39 @@ int main() {
     return 1;
   }
 
-  srand(12389);
+  srand(13439);
 
   character player;
-  player.block =
-      (SDL_FRect){.x = 960 - 100, .y = 540 - 100, .w = 300, .h = 300};
-  player.gridx = rand() % 1000;
-  player.gridy = rand() % 1000;
-
+  player.block = (SDL_FRect){960 - 100, 540 - 100, 200, 200};
+  player.gridx = rand() % 100;
+  player.gridy = rand() % 100;
+  player.speed = 4000;
   player.player_move_grid = true;
+
   viewpoint camera;
-  camera.block = (SDL_FRect){.w = 1920, .h = 1080};
-  camera.block.x = 0;
+  camera.block = (SDL_FRect){.x = 0, .y = 0, .w = 1920, .h = 1080};
   camera.gridx = player.gridx;
-  camera.block.y = 0;
   camera.gridy = player.gridy;
 
   chunks loadedchunks[chunk_pool];
+  for (int i = 0; i < chunk_pool; i++) {
+    loadedchunks[i].active = false;
+    loadedchunks[i].gx = 0;
+    loadedchunks[i].gy = 0;
+    loadedchunks[i].no_of_polygons = 0;
+    for (int t = 0; t < 5; t++) {
+      loadedchunks[i].polygon[t].texture = NULL;
+    }
+  }
 
   bool running = true;
   Uint64 frame_start_ticks = SDL_GetPerformanceCounter(), frame_end_ticks;
   SDL_Event event;
-  loadchunks(loadedchunks, &player, renderer);
 
   while (running) {
-
     frame_end_ticks = SDL_GetPerformanceCounter();
     delta = (double)(frame_end_ticks - frame_start_ticks) /
-            SDL_GetPerformanceFrequency();
+            (double)SDL_GetPerformanceFrequency();
     frame_start_ticks = frame_end_ticks;
 
     while (SDL_PollEvent(&event)) {
@@ -209,19 +244,18 @@ int main() {
         running = false;
       }
     }
+
     if (player.player_move_grid) {
-      init_chunks(loadedchunks, &player);
+      load_chunks(loadedchunks, &player);
+      load_polygons(loadedchunks, &player, renderer);
       player.player_move_grid = false;
     }
     update(&player, &camera);
     render(renderer, &player, &camera);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
   }
 
   for (int i = 0; i < chunk_pool; i++) {
-    for (int j = 0; j < loadedchunks[i].no_of_polygons; j++) {
-      SDL_DestroyTexture(loadedchunks[i].polygon[j].texture);
-    }
+    destroy_polygons(loadedchunks[i].polygon, loadedchunks[i].no_of_polygons);
   }
 
   SDL_DestroyWindow(window);
