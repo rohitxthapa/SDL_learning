@@ -7,11 +7,12 @@ void get_polygons(polygons *block, int x, int y) {
   srand((x * 73856093) ^ (y * 19349663));
   block->sides = 3 + rand() % 15;
   block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides));
-  block->degreeradian =
-      ((block->sides - 2) * 180.0 / block->sides) * (3.141592653589) / 180;
+  block->degreeradian = ((block->sides - 2) * 3.14159253589 / block->sides);
   block->size = 50 + rand() % 50;
-  block->x = block->size + 1;
-  block->y = block->size + 1;
+  // block->x = block->size + 1;
+  // block->y = block->size + 1;
+  block->x = rand() % 1024;
+  block->y = rand() % 1024;
   block->degreeradiantoxaxis = (rand() % 360) * (3.141592653589) / 180;
 }
 
@@ -19,11 +20,13 @@ void get_polygons_texture(polygons *block, SDL_Renderer *renderer) {
   for (int i = 0; i < block->sides; i++) {
     float theta =
         block->degreeradiantoxaxis + (2.0f * 3.141592653589 * i) / block->sides;
-    block->vertices[i].position.x = block->x + block->size * cos(theta);
-    block->vertices[i].position.y = block->y - block->size * sin(theta);
+    // block->vertices[i].position.x = block->x + block->size * cos(theta);
+    // block->vertices[i].position.y = block->y - block->size * sin(theta);
+    block->vertices[i].position.x = block->size * (1 + cos(theta)) + 1;
+    block->vertices[i].position.y = block->size * (1 + sin(theta)) + 1;
   }
   for (int i = 0; i < block->sides; i++)
-    block->vertices[i].color = (SDL_FColor){1, 0, 0, 1};
+    block->vertices[i].color = (SDL_FColor){0.6, 0.8, 0.4, 1};
 
   int triangles = block->sides - 2;
   int incides[triangles * 3];
@@ -48,8 +51,13 @@ void get_polygons_texture(polygons *block, SDL_Renderer *renderer) {
   SDL_SetRenderTarget(renderer, NULL);
 }
 void free_polygon(polygons *block) {
-  if (block->vertices)
+  if (block->vertices) {
     free(block->vertices);
-  if (block->texture)
+    block->vertices = NULL;
+  }
+
+  if (block->texture) {
     SDL_DestroyTexture(block->texture);
+    block->texture = NULL;
+  }
 }

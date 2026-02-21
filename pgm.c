@@ -6,9 +6,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-double delta;
-int grid_len = 1028;
+double delta = 0.016;
+int window_w = 1920;
+int window_h = 1080;
+int grid_len = 1024;
 int chunk_pool = 81;
+SDL_FRect screen_rect;
+float zoom = 1.0f;
 
 typedef struct {
   SDL_FRect block;
@@ -17,12 +21,6 @@ typedef struct {
   bool player_move_grid;
   float speed;
 } character;
-
-typedef struct {
-  SDL_FRect block;
-  int gridx;
-  int gridy;
-} viewpoint;
 
 typedef struct {
   int gridx;
@@ -60,14 +58,7 @@ bool init(SDL_Window **window, SDL_Renderer **renderer) {
   }
   return true;
 }
-void destroy_polygons(polygons *polygons, int size) {
-  for (int i = 0; i < size; i++) {
-    if (polygons[i].texture) {
-      SDL_DestroyTexture(polygons->texture);
-      polygons[i].texture = NULL;
-    }
-  }
-}
+
 int hash_pos(int x, int y) {
   long long num = ((long long)x * 73856093LL) ^ ((long long)y * 19349669LL);
   int mod = (int)(num % chunk_pool);
@@ -79,19 +70,21 @@ int hash_pos(int x, int y) {
 void load_chunks(chunks *chunks, character *player) {
   for (int i = 0; i < chunk_pool; i++) {
     if (chunks[i].active) {
-      if (abs(chunks[i].gx - player->gridx) > 2 ||
-          abs(chunks[i].gy - player->gridy > 2)) {
+      if (abs(chunks[i].gx - player->gridx) > 4 ||
+          abs(chunks[i].gy - player->gridy) > 4) {
         chunks[i].active = false;
-        destroy_polygons(chunks[i].polygon, chunks[i].no_of_polygons);
+        for (int j = 0; j < chunks[i].no_of_polygons; j++) {
+          free_polygon(&chunks[i].polygon[j]);
+        }
         chunks[i].no_of_polygons = 0;
       }
     }
   }
-  int sqrt_pool = 7;
+  int sqrt_pool = 9;
   for (int i = 0; i < sqrt_pool; i++) {
     for (int j = 0; j < sqrt_pool; j++) {
-      int gx = player->gridx - 3 + i;
-      int gy = player->gridy - 3 + j;
+      int gx = player->gridx - 4 + i;
+      int gy = player->gridy - 4 + j;
       int index = hash_pos(gx, gy);
       if (!chunks[index].active) {
         chunks[index].gx = gx;
@@ -100,8 +93,7 @@ void load_chunks(chunks *chunks, character *player) {
       } else {
         int start = index;
         while (chunks[index].active &&
-               ((chunks[index].gx != player->gridx + i) ||
-                (chunks[index].gy != player->gridy + j))) {
+               ((chunks[index].gx != gx) || (chunks[index].gy != gy))) {
           index++;
           index %= chunk_pool;
           if (index == start) {
@@ -110,8 +102,8 @@ void load_chunks(chunks *chunks, character *player) {
             break;
           }
         }
-        chunks[index].gx = player->gridx + i;
-        chunks[index].gy = player->gridy + j;
+        chunks[index].gx = gx;
+        chunks[index].gy = gy;
         chunks[index].active = true;
       }
     }
@@ -120,34 +112,30 @@ void load_chunks(chunks *chunks, character *player) {
 
 void load_polygons(chunks *chunks, character *player, SDL_Renderer *renderer) {
   for (int i = 0; i < chunk_pool; i++) {
-    if (chunks->active && chunks->polygon[0].texture == NULL) {
+    if (chunks[i].active && chunks[i].polygon[0].texture == NULL) {
       chunks[i].no_of_polygons = 5;
-      for (int i = 0; i < chunks->no_of_polygons; i++) {
-        get_polygons(&chunks->polygon[i], chunks->gx, chunks->gy);
-        get_polygons_texture(&chunks->polygon[i], renderer);
+      for (int j = 0; j < chunks[i].no_of_polygons; j++) {
+        get_polygons(&chunks[i].polygon[j], chunks[i].gx, chunks[i].gy);
+        get_polygons_texture(&chunks[i].polygon[j], renderer);
       }
     }
   }
 }
 
-void update(character *player, viewpoint *camera) {
+void update(character *player) {
 
   const bool *keys = SDL_GetKeyboardState(NULL);
   if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) {
     player->block.y += player->speed * delta;
-    camera->block.y += player->speed * delta;
   }
   if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) {
     player->block.y -= player->speed * delta;
-    camera->block.y -= player->speed * delta;
   }
   if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) {
     player->block.x += player->speed * delta;
-    camera->block.x += player->speed * delta;
   }
   if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) {
     player->block.x -= player->speed * delta;
-    camera->block.x -= player->speed * delta;
   }
   if (player->block.x < 0) {
     player->block.x = grid_len;
@@ -165,35 +153,62 @@ void update(character *player, viewpoint *camera) {
     player->block.y = 0;
     player->gridy++;
   }
+}
 
-  if (camera->block.x < 0) {
-    camera->block.x = grid_len;
-    camera->gridx--;
-  } else if (camera->block.x > grid_len) {
-    camera->block.x = 0;
-    camera->gridx++;
-  }
-  if (camera->block.y < 0) {
-    camera->block.y = grid_len;
-    camera->gridy--;
-  } else if (camera->block.y > grid_len) {
-    camera->block.y = 0;
-    camera->gridy++;
+void render_polygons(chunks *chunks, character *player,
+                     SDL_Renderer *renderer) {
+  for (int i = -2; i <= 2; i++) {
+    for (int j = -2; j <= 2; j++) {
+      if (abs(i) + abs(j) <= 2) {
+        int x = player->gridx + i;
+        int y = player->gridy + j;
+        int index = hash_pos(x, y);
+        int start = index;
+        if (chunks[index].gx != x || chunks[index].gy != y) {
+          while (chunks[index].active) {
+            index++;
+            if (index == start) {
+              index = -1;
+              break;
+            }
+          }
+        }
+        if (index >= 0) {
+          for (int k = 0; k < chunks[index].no_of_polygons; k++) {
+            SDL_FRect destination = {
+                .x = (i * grid_len + chunks[index].polygon[k].x -
+                      player->block.x),
+                .y = (j * grid_len + chunks[index].polygon[k].y +
+                      player->block.y),
+                .w = chunks[index].polygon[k].size * 2 + 2,
+                .h = chunks[index].polygon[k].size * 2 + 2};
+            // SDL_FRect demo = {1300.0, 800.0, 200.0, 200.0};
+            SDL_RenderTexture(renderer, chunks[index].polygon[k].texture, NULL,
+                              &destination);
+          }
+        }
+      }
+    }
   }
 }
 
-void render(SDL_Renderer *renderer, character *player, viewpoint *camera) {
-  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+void render(SDL_Renderer *renderer, character *player, chunks *chunks) {
+  SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
   SDL_RenderClear(renderer);
 
-  SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-  SDL_FRect design = {960, 540, .w = player->block.w, .h = player->block.h};
-  SDL_RenderFillRect(renderer, &design);
+  render_polygons(chunks, player, renderer);
 
-  SDL_RenderDebugTextFormat(
-      renderer, 100.0f, 100.0f, "%d %d %f %f %d %d %f %f ", player->gridx,
-      player->gridy, player->block.x, player->block.y, camera->gridx,
-      camera->gridy, camera->block.x, camera->block.y);
+  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+  // something need to be done here replace design by screen_rect
+  screen_rect.x = ((float)window_w / 2) - (player->block.w / 2);
+  screen_rect.y = ((float)window_h / 2) - (player->block.h / 2);
+  screen_rect.w = player->block.w;
+  screen_rect.h = player->block.h;
+  SDL_RenderFillRect(renderer, &screen_rect);
+
+  SDL_RenderDebugTextFormat(renderer, 100.0f, 100.0f, "%d %d %f %f ",
+                            player->gridx, player->gridy, player->block.x,
+                            player->block.y);
   SDL_RenderPresent(renderer);
 }
 
@@ -207,16 +222,11 @@ int main() {
   srand(13439);
 
   character player;
-  player.block = (SDL_FRect){960 - 100, 540 - 100, 200, 200};
+  player.block = (SDL_FRect){0, 0 - 100, 200, 200};
   player.gridx = rand() % 100;
   player.gridy = rand() % 100;
-  player.speed = 4000;
+  player.speed = 1000;
   player.player_move_grid = true;
-
-  viewpoint camera;
-  camera.block = (SDL_FRect){.x = 0, .y = 0, .w = 1920, .h = 1080};
-  camera.gridx = player.gridx;
-  camera.gridy = player.gridy;
 
   chunks loadedchunks[chunk_pool];
   for (int i = 0; i < chunk_pool; i++) {
@@ -250,12 +260,14 @@ int main() {
       load_polygons(loadedchunks, &player, renderer);
       player.player_move_grid = false;
     }
-    update(&player, &camera);
-    render(renderer, &player, &camera);
+    update(&player);
+    render(renderer, &player, loadedchunks);
   }
 
   for (int i = 0; i < chunk_pool; i++) {
-    destroy_polygons(loadedchunks[i].polygon, loadedchunks[i].no_of_polygons);
+    for (int j = 0; j < loadedchunks[i].no_of_polygons; j++) {
+      free_polygon(&loadedchunks[i].polygon[j]);
+    }
   }
 
   SDL_DestroyWindow(window);
