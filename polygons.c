@@ -9,10 +9,6 @@ void get_polygons(polygons *block, int x, int y) {
   block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides));
   block->degreeradian = ((block->sides - 2) * 3.14159253589 / block->sides);
   block->size = 50 + rand() % 50;
-  // block->x = block->size + 1;
-  // block->y = block->size + 1;
-  block->x = rand() % 1024;
-  block->y = rand() % 1024;
   block->degreeradiantoxaxis = (rand() % 360) * (3.141592653589) / 180;
 }
 
@@ -20,8 +16,6 @@ void get_polygons_texture(polygons *block, SDL_Renderer *renderer) {
   for (int i = 0; i < block->sides; i++) {
     float theta =
         block->degreeradiantoxaxis + (2.0f * 3.141592653589 * i) / block->sides;
-    // block->vertices[i].position.x = block->x + block->size * cos(theta);
-    // block->vertices[i].position.y = block->y - block->size * sin(theta);
     block->vertices[i].position.x = block->size * (1 + cos(theta)) + 1;
     block->vertices[i].position.y = block->size * (1 + sin(theta)) + 1;
   }

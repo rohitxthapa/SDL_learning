@@ -152,3 +152,121 @@ Notes and next steps
 - If you want, I can compile and run a quick test in this environment, and iterate on any remaining runtime issues (e.g., SDL3 function availability, texture management, or polygon rendering specifics).
 
 Would you like me to attempt a quick build and run now to confirm everything compiles and runs as expected?
+
+
+
+Here’s a focused code review of pgm.c (and related polygons code) with an emphasis on the hash-map usage and obvious improvement opportunities. I’ll call out concrete issues and provide concrete options, including a path if you want me to implement a replacement for the hash map.
+
+What I see in pgm.c (and related files)
+- Hash-map approach
+  - chunk_pool is 81 and you hash (gx, gy) to an index in 0..80, then use open addressing (linear probing) to resolve collisions.
+  - This is brittle: collisions can complicate logic, and if the table fills you can get “i borke here” situations. The code relies on probing to find an empty slot, but it’s easy to end up in a partially filled state or misplace chunk coordinates.
+  - Using a hashed bucket for 9x9 neighborhood around the player is reasonable, but 81 slots are small and the current probing logic is error-prone (and you log errors in normal operation paths).
+
+- Memory management for polygons
+  - Polygons allocate vertices in get_polygons (block->vertices = malloc(...)).
+  - destroy_polygons only frees textures, not the allocated vertex data.
+  - free_polygon exists (in polygons.c) to free vertices and texture, but it’s not used in the cleanup path. This leads to a memory leak.
+  - As a result, on chunk reloads you’ll leak memory every time a chunk is destroyed.
+
+- Initialization and event loop issues (major blockers)
+  - init has a logic bug: It returns false on successful SDL_Init, and true on failure due to inverted check.
+  - The rendering path uses SDL_SetRenderVSync return value incorrectly (nonzero vs zero). The code assumes “nonzero means success,” but SDL typically returns 0 on success.
+  - In main, there are mismatches in field usage:
+    - The character struct has gridx/gridy, but main uses grid fields as if they were gridx/gridy in some places (and there are mixed uses like player->gridx in some places and player.gridx in others). This will fail compilation and/or lead to runtime logic bugs.
+  - Event loop uses SDL_EVENT_QUIT in places where the correct constant is SDL_QUIT.
+  - There are inconsistencies in how the mouse/keyboard state is read (SDL_GetKeyboardState returns a Uint8*, not a bool*, so storing it as const bool* is incorrect).
+
+- Polygons code (memory and determinism)
+  - get_polygons seeds with srand based on coordinates, then uses global rand for shape generation. That’s fine if intended, but it means you can’t easily reproduce shapes across restarts without using the same seed. If you want deterministic shapes per (gx, gy), you’re already doing that via the seed, which is fine.
+  - get_polygons_texture builds a texture per polygon; that’s okay but you must ensure you free the texture and the vertices when no longer needed.
+
+- Rendering logic and coordinate math
+  - The code uses a lot of manual coordinate math for translating chunk polygons into screen space. It’s not inherently wrong, but it can easily go out of sync with the hash-table layout or with grid movement.
+  - The code uses a lot of hard-coded magic numbers (grid_len = 1024, chunk_pool = 81, sqrt_pool = 9) which makes maintenance harder.
+
+Concrete issues to fix now (high priority)
+1) Fix critical build/run-time bugs
+- init: correct the initialization check
+  - Change:
+    if (!SDL_Init(SDL_INIT_VIDEO)) { ... return false; }
+  - To:
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) { ... return false; }
+
+- init: fix renderer creation and vsync handling
+  - Use a single-parameter renderer creation that matches your SDL version (SDL3 may differ; two-arg form is common in SDL2). If your SDL3 API is different, adapt accordingly.
+  - Fix vsync check:
+    - Use 0 for success and non-zero for failure (or vice versa, per your API). The safe approach is: if (SDL_SetRenderVSync(*renderer, 1) == 0) log success; else log failure with SDL_GetError().
+
+- Event loop: use SDL_QUIT, not SDL_EVENT_QUIT
+  - Replace:
+    if (event.type == SDL_EVENT_QUIT) { ... }
+  - With:
+    if (event.type == SDL_QUIT) { ... }
+
+- main: fix the gridx/gridy field usage
+  - The character struct uses gridx/gridy, but you’re referencing gridx/gridy in some places and gridx/y in others within main. Ensure you consistently use gridx and gridy everywhere (no player.gridx / player.gridy if your struct uses gridx/gridy).
+
+2) Memory mgmt fix for polygons
+- Free per-polygon vertices
+  - In destroy_polygons, call free_polygon(&polygons[i]) to ensure both vertices and textures are freed.
+  - After freeing, also null out pointers to avoid double-free later.
+- Ensure free_polygon is used consistently whenever you drop a chunk’s polygons.
+
+3) Replace or simplify the hash map (longer-term)
+- Short-term: fix the existing hash-based approach
+  - Make the usage consistent: either keep the hash map with robust collision handling, or switch to a 2D fixed grid (see below) to avoid collisions altogether.
+- Longer-term options:
+  - Option A: Move to a fixed 9x9 grid with direct indexing
+    - Index chunks with index = i * 9 + j for i, j in [0..8], representing gx = player.gridx - 4 + i and gy = player.gridy - 4 + j.
+    - This eliminates hashing and probing entirely and guarantees O(1) indexing for the 81 slots.
+    - Render and load logic would then compute index directly from (gx, gy) relative to the current center cell.
+  - Option B: Use a small, robust hash-map library
+    - Use uthash (popular C hashmap) or khash. Map (gx, gy) pairs to chunk objects. This reduces the chance of collisions and makes eviction/purging explicit.
+- If you want, I can implement one of these approaches as a patch and explain the rationale.
+
+4) Improve null checks and resource clean-up
+- After creating window/renderer, you should still perform null checks and free any resources on error paths.
+- On exit, ensure all polygon resources (vertices and textures) are freed, and textures are destroyed.
+
+5) Minor robustness and style improvements
+- Avoid global RNG seeding in get_polygons; either seed once in main or use a deterministic seed derived from (gx, gy) as you already do.
+- Consider using a small helper to compute base indices to avoid repeating complex indexing math in render_polygons.
+- Add comments to explain the left-right/up-down world math and the purpose of the 81-slot grid around the player.
+
+What I’d do next (practical plan)
+- Step 1: Fix critical build/run issues in pgm.c
+  - Correct the SDL_Init check, fix renderer creation call to match your SDL version, fix vsync handling, fix SDL_QUIT, and fix the main struct field usage (gridx/gridy consistently, not mixed with gridx/gridy in main).
+- Step 2: Fix memory leaks
+  - Wire destroy_polygons to call free_polygon for each polygon. Ensure vertices and textures are freed on chunk unload and program exit.
+- Step 3: Replace or simplify the hash map
+  - If you want quick wins, implement a 9x9 direct-index grid:
+    - Remove hash_pos usage and the related open-addressing logic.
+    - Use a direct 81-slot array, indexed by i*9 + j, where i,j iterate 0..8 around the current center cell.
+    - Update load_chunks, load_polygons, render_polygons to use the new index scheme.
+  - If you prefer a more robust approach, swap in a small hashmap library (uthash) to map (gx, gy) pairs to chunk data.
+- Step 4: Testing
+  - Build and run with a minimal test to ensure that loading, unloading, and rendering don’t crash.
+  - Add a small unit-like test (or a run in verbose mode) to verify that all freed resources on exit.
+- Step 5: Optional enhancements
+  - Consider adding a simple profiler around update/render loops to detect slow areas.
+  - Add bounds checks when moving the player so grid indices don’t go out of the expected range.
+
+If you want, I can implement a concrete patch to replace the hash map with a 9x9 direct indexing approach (step 3 Option A) and fix the compile-time issues in one go. Just tell me which approach you prefer:
+- A) Replace the hash map with a fixed 9x9 grid (simplest and most robust for this use case)
+- B) Introduce a small hashmap library (uthash or similar) to map (gx, gy) to chunk data (more flexible, but a bit more boilerplate)
+
+Notes on related files
+- polygons.c / polygons.h
+  - get_polygons allocates block->vertices; free_polygon frees vertices and texture.
+  - destroy_polygons currently frees only textures; extend to call free_polygon for each polygon to avoid leaks.
+- polygons.c memory management is the primary leak source you’ll want to fix early.
+
+Paths to look at
+- pgm.c (main program loop and hash-map usage)
+- polygons.c / polygons.h (polygon memory management)
+- You’ll likely want to harmonize field names across the code (gridx/gridy vs any other variants) to avoid compile-time errors.
+
+Would you like me to:
+- Implement the 9x9 direct-index grid replacement patch now (including updated load/load_polygons/render_polygons paths), or
+- Just fix the immediate compile/run-time issues and memory cleanup first and then iterate on the grid/hash approach?

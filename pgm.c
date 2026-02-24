@@ -144,6 +144,7 @@ void update(character *player) {
   } else if (player->block.x > grid_len) {
     player->block.x = 0;
     player->gridx++;
+    player->player_move_grid = true;
   }
   if (player->block.y < 0) {
     player->block.y = grid_len;
@@ -152,6 +153,7 @@ void update(character *player) {
   } else if (player->block.y > grid_len) {
     player->block.y = 0;
     player->gridy++;
+    player->player_move_grid = true;
   }
 }
 
@@ -222,7 +224,7 @@ int main() {
   srand(13439);
 
   character player;
-  player.block = (SDL_FRect){0, 0 - 100, 200, 200};
+  player.block = (SDL_FRect){0, 0, 100, 100};
   player.gridx = rand() % 100;
   player.gridy = rand() % 100;
   player.speed = 1000;
