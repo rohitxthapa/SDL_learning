@@ -78,8 +78,8 @@ void get_polygons(polygons *block) {
   block->vertices = malloc(sizeof(SDL_Vertex) * (block->sides));
   block->degreeradian = ((block->sides - 2) * 3.14159253589 / block->sides);
   block->size = 50 + rand() % 50;
-  block->x = rand() % chunk_len;
-  block->y = rand() % chunk_len;
+  block->x = rand() % grid_len;
+  block->y = rand() % grid_len;
   block->degreeradiantoxaxis = (rand() % 360) * (3.141592653589) / 180;
 }
 
@@ -114,7 +114,6 @@ void get_polygons_texture(polygons *block, SDL_Renderer *renderer) {
 }
 
 void generate_chunk(chunks *chunk, int gx, int gy) {
-    if(!chunk->active){
         chunk->gx = gx;
         chunk->gy = gy;
         srand(seed + ((gx * 73856093) ^ (gy * 19349663)));
@@ -123,7 +122,6 @@ void generate_chunk(chunks *chunk, int gx, int gy) {
           get_polygons_texture(&chunk->polygon[i], renderer);
         }
         chunk->active = true ;
-    }
 }
 
 void free_chunk(chunks *chunk) {
@@ -167,12 +165,13 @@ void load_chunks(chunks (*chunks)[chunk_len], character *player) {
 
       for (int i = 0 ; i<chunk_len ; i++){
           for (int j = start ; j!=end; j+=unit){
+
               chunks[i][j] = chunks[i][j+unit];
           }
       }
 
       for(int i = 0 ; i < chunk_len ; i++){
-          generate_chunk(&chunks[i][end],center_x + end - 2,center_y + i - 2 );
+          generate_chunk(&chunks[i][end],center_x + i - 2,center_y + end - 2);
       }
   }
   if(state & POS_Y || state & NEG_Y){
@@ -191,7 +190,7 @@ void load_chunks(chunks (*chunks)[chunk_len], character *player) {
       }
 
       for(int i = 0 ; i < chunk_len ; i++){
-          generate_chunk(&chunks[end][i],center_x +i -2 , center_y +end - 2);
+          generate_chunk(&chunks[end][i],center_x +end -2 , center_y +i - 2);
       }
   }
 }
@@ -212,7 +211,7 @@ void update(character *player) {
   if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) {
       dir_x = -1 ;
   }
-  float state = ((dir_x!=0)&&(dir_y!=0))? 0.5 : 1;
+  float state = ((dir_x!=0)&&(dir_y!=0))? 0.7071067f : 1.0f;
   player->block.x += dir_x * state * player->speed * delta ;
   player->block.y += dir_y * state * player->speed * delta ;
 
@@ -220,7 +219,8 @@ void update(character *player) {
     player->block.x = grid_len;
     player->gridx--;
     player->player_move_grid |= NEG_X;
-  } else if (player->block.x > grid_len) {
+  }
+  if (player->block.x > grid_len) {
     player->block.x = 0;
     player->gridx++;
     player->player_move_grid |= POS_X;
@@ -229,7 +229,8 @@ void update(character *player) {
     player->block.y = grid_len;
     player->gridy--;
     player->player_move_grid |= NEG_Y;
-  } else if (player->block.y > grid_len) {
+  }
+  if (player->block.y > grid_len) {
     player->block.y = 0;
     player->gridy++;
     player->player_move_grid |= POS_Y;
@@ -237,31 +238,22 @@ void update(character *player) {
 }
 
 void render(character *player, chunks (*chunks)[5]) {
-  SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255);
+  SDL_SetRenderDrawColor(renderer, 30, 60, 30, 255);
   SDL_RenderClear(renderer);
 
   float world_x = (player->gridx * grid_len) + player->block.x;
   float world_y = (player->gridy * grid_len) + player->block.y;
 
-  int flagx , flagy ,endx , endy ,gridx,gridy;
-  flagx = (player->block.x < render_pixel)? -1 : 1 ;
-  flagy = (player->block.y < render_pixel)? -1 : 1;
-  endx = 2 + flagx + flagx ;
-  endy = 2 + flagy + flagy ;
-  gridx = player->gridx;
-  gridy = player->gridy;
-
-  for (int i = 2; i != endx; i+=flagx) {
-    for (int j = 2; j != endy; j+=flagy) {
+  for (int i = 0; i < chunk_len; i++) {
+    for (int j = 0; j < chunk_len; j++) {
       for (int k = 0; k < chunks[i][j].no_of_polygons; k++) {
         polygons *poly = &chunks[i][j].polygon[k];
 
         float p_world_x = (chunks[i][j].gx * grid_len) + poly->x;
         float p_world_y = (chunks[i][j].gy * grid_len) + poly->y;
 
-        float screen_x = (window_w / 2) + p_world_x - world_x ;
-        float screen_y = (window_h / 2) + p_world_y - world_y ;
-        printf("%d %d \n ",screen_x, screen_y);
+        float screen_x = (window_w / 2.0f) + p_world_x - world_x ;
+        float screen_y = (window_h / 2.0f) - p_world_y + world_y ;
 
         if (screen_x > -100 && screen_x < window_w + 100 && screen_y > -100 &&
             screen_y < window_h + 100) {
@@ -306,7 +298,7 @@ int main(int argc, char *argv[]) {
       chunks[i][j].no_of_polygons = 20;
       chunks[i][j].polygon =
           malloc(chunks[i][j].no_of_polygons * sizeof(polygons));
-      for (int k = 0; k < 5; k++) {
+      for (int k = 0; k < chunks[i][j].no_of_polygons; k++) {
         chunks[i][j].polygon[k].texture = NULL;
         chunks[i][j].polygon[k].vertices = NULL;
       }
@@ -328,9 +320,9 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (player.player_move_grid != 0) {
+    if (player.player_move_grid != NO_MOVE) {
       load_chunks(chunks, &player);
-      player.player_move_grid = 0;
+      player.player_move_grid = NO_MOVE;
     }
     update(&player);
     render(&player, chunks);
