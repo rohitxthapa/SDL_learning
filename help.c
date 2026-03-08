@@ -117,17 +117,6 @@ void get_polygons_texture(polygons *block, SDL_Renderer *renderer) {
   SDL_SetRenderTarget(renderer, NULL);
 }
 
-void free_polygon(polygons *block) {
-  if (block->vertices) {
-    free(block->vertices);
-    block->vertices = NULL;
-  }
-  if (block->texture) {
-    SDL_DestroyTexture(block->texture);
-    block->texture = NULL;
-  }
-}
-
 void generate_chunk(chunks *chunk, int gx, int gy) {
   chunk->gx = gx;
   chunk->gy = gy;
@@ -141,7 +130,14 @@ void generate_chunk(chunks *chunk, int gx, int gy) {
 
 void free_chunk(chunks *chunk) {
   for (int i = 0; i < chunk->no_of_polygons; i++) {
-    free_polygon(&chunk->polygon[i]);
+    if (chunk->polygon[i].vertices) {
+      free(chunk->polygon[i].vertices);
+      chunk->polygon[i].vertices = NULL;
+    }
+    if (chunk->polygon[i].texture) {
+      SDL_DestroyTexture(chunk->polygon[i].texture);
+      chunk->polygon[i].texture = NULL;
+    }
   }
 }
 
@@ -231,6 +227,7 @@ void update(character *player) {
   }
 }
 
+
 void render(character *player, chunks (*chunks)[5]) {
   SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255);
   SDL_RenderClear(renderer);
@@ -266,6 +263,10 @@ void render(character *player, chunks (*chunks)[5]) {
   SDL_SetRenderDrawColor(renderer, 255, 50, 50, 255);
   SDL_FRect p_rect = {(window_w / 2) - 25, (window_h / 2) - 25, 50, 50};
   SDL_RenderFillRect(renderer, &p_rect);
+
+  SDL_RenderDebugTextFormat(renderer, 100.0f, 100.0f, "%d %d %f %f ",
+                            player->gridx, player->gridy, player->block.x,
+                            player->block.y);
 
   SDL_RenderPresent(renderer);
 }
@@ -321,7 +322,6 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 5; j++) {
       free_chunk(&chunk_grid[i][j]);
-      free(chunk_grid[i][j].polygon);
     }
   }
   SDL_DestroyRenderer(renderer);

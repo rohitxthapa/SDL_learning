@@ -50,6 +50,8 @@ typedef struct {
   bool active;
 } chunks;
 
+chunks temp;
+
 bool init() {
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("SDL could not initilize : %s", SDL_GetError());
@@ -152,46 +154,41 @@ void load_chunks(chunks (*chunks)[chunk_len], character *player) {
     }
     return;
   }
-  int start = 0 , end = 0 , unit = 0 ;
-  int state = player->player_move_grid ;
-  if(state & POS_X ||  state & NEG_X){
-      unit = (state & POS_X)? 1 : -1 ;
-      start = (state & POS_X)? 0 : chunk_len - 1;
-      end = abs(chunk_len - 1 - start);
 
-      for (int i = 0 ; i < chunk_len ; i++){
-          free_chunk(&chunks[i][start]);
+  int state = player->player_move_grid;
+
+  if (state & POS_X || state & NEG_X) {
+    int unit = (state & POS_X) ? 1 : -1;
+    int start = (state & POS_X) ? 0 : chunk_len - 1;
+    int end = abs(chunk_len - 1 - start);
+
+    for (int j = 0; j < chunk_len; j++) {
+      free_chunk(&chunks[start][j]);
+
+      for (int i = start; i != end; i += unit) {
+        temp = chunks[i][j];
+        chunks[i][j] = chunks[i + unit][j];
+        chunks[i + unit][j] = temp;
       }
-
-      for (int i = 0 ; i<chunk_len ; i++){
-          for (int j = start ; j!=end; j+=unit){
-
-              chunks[i][j] = chunks[i][j+unit];
-          }
-      }
-
-      for(int i = 0 ; i < chunk_len ; i++){
-          generate_chunk(&chunks[i][end],center_x + i - 2,center_y + end - 2);
-      }
+      generate_chunk(&chunks[end][j], center_x + end - 2, center_y + j - 2);
+    }
   }
-  if(state & POS_Y || state & NEG_Y){
-      unit = (state & POS_Y)? 1 : -1;
-      start = (state & POS_Y)? 0: chunk_len - 1 ;
-      end = abs(chunk_len - 1 - start);
 
-      for(int i = 0 ; i < chunk_len ; i++){
-          free_chunk(&chunks[start][i]);
-      }
+  if (state & POS_Y || state & NEG_Y) {
+    int unit = (state & POS_Y) ? 1 : -1;
+    int start = (state & POS_Y) ? 0 : chunk_len - 1;
+    int end = abs(chunk_len - 1 - start);
 
-      for(int i = start ; i!=end ; i+=unit){
-          for(int j = 0 ; j < chunk_len ; j++){
-              chunks[i][j]=chunks[i+unit][j];
-          }
-      }
+    for (int i = 0; i < chunk_len; i++) {
+      free_chunk(&chunks[i][start]);
 
-      for(int i = 0 ; i < chunk_len ; i++){
-          generate_chunk(&chunks[end][i],center_x +end -2 , center_y +i - 2);
+      for (int j = start; j != end; j += unit) {
+        temp = chunks[i][j];
+        chunks[i][j] = chunks[i][j + unit];
+        chunks[i][j + unit] = temp;
       }
+      generate_chunk(&chunks[i][end], center_x + i - 2, center_y + end - 2);
+    }
   }
 }
 
@@ -241,16 +238,16 @@ void render(character *player, chunks (*chunks)[5]) {
   SDL_SetRenderDrawColor(renderer, 30, 60, 30, 255);
   SDL_RenderClear(renderer);
 
-  float world_x = (player->gridx * grid_len) + player->block.x;
-  float world_y = (player->gridy * grid_len) + player->block.y;
+  long long int world_x = (player->gridx * grid_len) + player->block.x;
+  long long int world_y = (player->gridy * grid_len) + player->block.y;
 
   for (int i = 0; i < chunk_len; i++) {
     for (int j = 0; j < chunk_len; j++) {
       for (int k = 0; k < chunks[i][j].no_of_polygons; k++) {
         polygons *poly = &chunks[i][j].polygon[k];
 
-        float p_world_x = (chunks[i][j].gx * grid_len) + poly->x;
-        float p_world_y = (chunks[i][j].gy * grid_len) + poly->y;
+        long long int p_world_x = (chunks[i][j].gx * grid_len) + poly->x;
+        long long int p_world_y = (chunks[i][j].gy * grid_len) + poly->y;
 
         float screen_x = (window_w / 2.0f) + p_world_x - world_x ;
         float screen_y = (window_h / 2.0f) - p_world_y + world_y ;
@@ -266,7 +263,7 @@ void render(character *player, chunks (*chunks)[5]) {
   }
 
   SDL_SetRenderDrawColor(renderer, 255, 50, 50, 255);
-  SDL_FRect p_rect = {(window_w / 2) - 25, (window_h / 2) - 25, 50, 50};
+  SDL_FRect p_rect = {(window_w / 2.0f) - 25, (window_h / 2.0f) - 25, 50, 50};
   SDL_RenderFillRect(renderer, &p_rect);
 
   SDL_RenderDebugTextFormat(renderer, 100.0f, 100.0f, "%d %d %f %f ",
@@ -288,7 +285,7 @@ int main(int argc, char *argv[]) {
   player.block = (SDL_FRect){0, 0, 100, 100};
   player.gridx = 0;
   player.gridy = 0;
-  player.speed = 1000.0f;
+  player.speed = 4000.0f;
   player.player_move_grid = -1;
 
   chunks chunks[chunk_len][chunk_len];
@@ -329,9 +326,7 @@ int main(int argc, char *argv[]) {
   }
   for (int i = 0; i < chunk_len; i++) {
     for (int j = 0; j < chunk_len; j++) {
-      for (int k = 0; k < chunks[i][j].no_of_polygons; k++) {
         free_chunk(&chunks[i][j]);
-      }
     }
   }
 
